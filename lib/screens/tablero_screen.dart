@@ -24,8 +24,8 @@ class _TableroScreenState extends State<TableroScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[900], // Fondo oscuro de ejemplo para resaltar el tablero
       appBar: AppBar(
-        title: const Text('Buscaminas Retro'),
-        centerTitle: true,
+        title: const Text('Buscaminas'),
+        //centerTitle: true,
         backgroundColor: Colors.black,
       ),
       body: Center(
@@ -67,30 +67,36 @@ class _TableroScreenState extends State<TableroScreen> {
     );
   }
 
-  // Widget para renderizar cada casilla de forma independiente
+// 1. Modificamos el diseño exterior de la casilla para usar tus imágenes de fondo
   Widget _construirBotonCelda(Celda celda) {
     return InkWell(
       onTap: () {
-        // Ejecutamos la acción dentro de un setState para que la pantalla se actualice
         setState(() {
-          celda.estaRevelada = true; // Simulación rápida de click
+          celda.estaRevelada = true;
           if (celda.esMina) {
-            // Aquí luego disparas la lógica de Game Over
             print("¡BOOM! Explotaste.");
+            // Aquí luego revelarás todas las minas del tablero
           }
         });
       },
       onLongPress: () {
-        // Click largo para poner banderas
         setState(() {
           celda.tieneBandera = !celda.tieneBandera;
         });
       },
       child: Ink(
         decoration: BoxDecoration(
-          color: celda.estaRevelada ? Colors.grey[300] : Colors.grey[700],
+          color: celda.estaRevelada ? Colors.grey[300] : Colors.grey[700], // Color de respaldo por seguridad
           borderRadius: BorderRadius.circular(4.0),
-          border: Border.all(color: Colors.black26),
+          image: DecorationImage(
+            // Cambiado a BoxFit.fill para que el fondo ocupe obligatoriamente todo el cuadro
+            image: AssetImage(
+              celda.estaRevelada 
+                  ? 'assets/imagenes/masked_tile.png' 
+                  : 'assets/imagenes/revealed_tile.png'
+            ),
+            fit: BoxFit.fill, 
+          ),
         ),
         child: Center(
           child: _contenidoCelda(celda),
@@ -99,43 +105,38 @@ class _TableroScreenState extends State<TableroScreen> {
     );
   }
 
-  // Determina qué se dibuja dentro del cuadrito
+  // 2. Modificamos el interior para pintar tus imágenes encima del fondo
   Widget _contenidoCelda(Celda celda) {
-    if (celda.tieneBandera) {
-      return const Icon(Icons.flag, color: Colors.red, size: 20);
+    // REGLA 1: Si tiene bandera (y no está revelada), muestra tu imagen de bandera
+    if (celda.tieneBandera && !celda.estaRevelada) {
+      return Image.asset(
+        'assets/imagenes/masked_tile_flag.png',
+        fit: BoxFit.fill, // Ocupa todo el contenedor
+      );
     }
     
+    // REGLA 2: Si está oculta y no tiene bandera, no se dibuja nada adentro
     if (!celda.estaRevelada) {
-      return const SizedBox(); // Vacío si está oculta
+      return const SizedBox();
     }
 
+    // REGLA 3: Si está revelada y es una mina, muestra tu imagen de bomba
     if (celda.esMina) {
-      return const Icon(Icons.brightness_7, color: Colors.black, size: 20); // Icono temporal de mina
-    }
-
-    // Si tiene minas alrededor y es mayor a 0, muestra el número
-    if (celda.minasAlrededor > 0) {
-      return Text(
-        '${celda.minasAlrededor}',
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 18,
-          color: _obtenerColorNumero(celda.minasAlrededor),
-        ),
+      return Image.asset(
+        'assets/imagenes/revealed_tile_bomb.png',
+        fit: BoxFit.fill, // Ocupa todo el contenedor
       );
     }
 
-    return const SizedBox(); // Vacío si es un "0"
-  }
-
-  // Estilo Clásico que pide el PDF (1=azul, 2=verde, 3=rojo...)
-  Color _obtenerColorNumero(int numero) {
-    switch (numero) {
-      case 1: return Colors.blue;
-      case 2: return Colors.green;
-      case 3: return Colors.red;
-      case 4: return const Color(0xFF000080); // Azul oscuro
-      default: return Colors.purple;
+    // REGLA 4: Si tiene minas alrededor (del 1 al 8), cargamos dinámicamente tu imagen del número
+    if (celda.minasAlrededor > 0) {
+      return Image.asset(
+        'assets/imagenes/revealed_tile_${celda.minasAlrededor}.png', 
+        fit: BoxFit.fill, // Ocupa todo el contenedor
+      );
     }
+
+    // Si es un "0", queda vacío mostrando solo el fondo de cuadro_revelado
+    return const SizedBox();
   }
 }
