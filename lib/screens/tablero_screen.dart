@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'gameover_screen.dart';
+import 'victoria_screen.dart';
 import '../logic.dart';
 import '../celda.dart';
 import 'dart:async';
+
 
 class TableroScreen extends StatefulWidget {
   final int filas;
@@ -23,9 +25,11 @@ class TableroScreen extends StatefulWidget {
 class _TableroScreenState extends State<TableroScreen> {
   late BuscaminasLogic _buscaminas;
   
-  // Variables para el control del tiempo
   Timer? _timer;
   int _segundosActivos = 0;
+  int _score = 0;
+  bool _partidaTerminada = false;
+  bool _modoDiosActivo = false; 
 
   @override
   void initState() {
@@ -33,14 +37,12 @@ class _TableroScreenState extends State<TableroScreen> {
     _iniciarNuevaPartida();
   }
 
-  // Limpiamos el timer cuando el jugador salga de esta pantalla para evitar fugas de memoria
   @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
   }
 
-  // Reinicia tanto la matriz de juego como el reloj
   void _iniciarNuevaPartida() {
     _buscaminas = BuscaminasLogic(
       filas: widget.filas,
@@ -48,19 +50,92 @@ class _TableroScreenState extends State<TableroScreen> {
       numMinas: widget.numMinas,
     );
     _segundosActivos = 0;
-    _timer?.cancel(); // Reseteamos cualquier timer viejo activo
+    _score = 0;
+    _partidaTerminada = false;
+    _timer?.cancel();
     _arrancarCronometro();
   }
 
   void _arrancarCronometro() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        _segundosActivos++;
-      });
+      if (!_partidaTerminada) {
+        setState(() {
+          _segundosActivos++;
+          _actualizarPuntaje(esBonoVictoria: false);
+        });
+      }
     });
   }
 
-  // Cuenta cuántas banderas activas hay en el tablero para restar al marcador
+  // --- CONTROL DEL SCORE ---
+  void _actualizarPuntaje({required bool esBonoVictoria}) {
+    int celdasReveladas = 0;
+    for (var fila in _buscaminas.tablero) {
+      for (var celda in fila) {
+        if (celda.estaRevelada && !celda.esMina) {
+          celdasReveladas++;
+        }
+      }
+    }
+
+    int multiplicadorDificultad = widget.numMinas; 
+    int puntosCasillas = celdasReveladas * 10 * multiplicadorDificultad;
+    int penalizacionTiempo = _segundosActivos * 2;
+
+    int puntajeCalculado = puntosCasillas - penalizacionTiempo;
+
+    if (esBonoVictoria) {
+      int bonoVelocidad = 5000 - (_segundosActivos * 20);
+      puntajeCalculado += bonoVelocidad > 0 ? bonoVelocidad : 500;
+    }
+
+    _score = puntajeCalculado < 0 ? 0 : puntajeCalculado;
+  }
+
+  // --- COMPROBACIÓN DE VICTORIA ---
+  void _verificarCondicionVictoria() {
+    int celdasReveladas = 0;
+    for (var fila in _buscaminas.tablero) {
+      for (var celda in fila) {
+        if (celda.estaRevelada && !celda.esMina) {
+          celdasReveladas++;
+        }
+      }
+    }
+
+    int celdasParaGanar = (widget.filas * widget.columnas) - widget.numMinas;
+
+    if (celdasReveladas == celdasParaGanar) {
+      _partidaTerminada = true;
+      _timer?.cancel(); 
+      _actualizarPuntaje(esBonoVictoria: true); 
+
+      _mostrarPantallaVictoria();
+    }
+  }
+
+  void _mostrarPantallaVictoria() {
+    bool comprobarSiEsTop3 = _score > 1500; 
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => VictoryScreen( 
+          score: _score,
+          tiempo: _formatearTiempo(_segundosActivos),
+          esTop3: comprobarSiEsTop3,
+          onReiniciar: () {
+            setState(() {
+              _iniciarNuevaPartida();
+            });
+          },
+          onIrAlMenu: () {
+            Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+          },
+        ),
+      ),
+    );
+  }
+
   int _calcularMinasRestantes() {
     int banderasColocadas = 0;
     for (var fila in _buscaminas.tablero) {
@@ -73,13 +148,10 @@ class _TableroScreenState extends State<TableroScreen> {
     return widget.numMinas - banderasColocadas;
   }
 
-  // Convierte los segundos a formato MM:SS
   String _formatearTiempo(int segundosTotales) {
-    int minutos = segundosTotales ~/ 60;
+    int minutes = segundosTotales ~/ 60;
     int segundos = segundosTotales % 60;
-    String minStr = minutos.toString().padLeft(2, '0');
-    String segStr = segundos.toString().padLeft(2, '0');
-    return '$minStr:$segStr';
+    return '${minutes.toString().padLeft(2, '0')}:${segundos.toString().padLeft(2, '0')}';
   }
 
   void _revelarCeldaRecursivo(int fila, int columna) {
@@ -107,40 +179,72 @@ class _TableroScreenState extends State<TableroScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[900],
+      // --- APPBAR CON CONTROLES DE MODO DIOS INTEGRADOS ---
       appBar: AppBar(
-        title: const Text('Buscaminas'),
+        title: const Text('Buscaminas Retro'),
         backgroundColor: Colors.black,
+        actions: [
+          // Botón Interruptor Modo Dios (Rayo)
+          IconButton(
+            icon: Icon(
+              _modoDiosActivo ? Icons.bolt : Icons.bolt_outlined,
+              color: _modoDiosActivo ? Colors.amber : Colors.white54,
+            ),
+            tooltip: 'Modo Dios',
+            onPressed: () {
+              setState(() {
+                _modoDiosActivo = !_modoDiosActivo;
+              });
+            },
+          ),
+          // Botón de Auto-Victoria (Copa) - Solo visible si activas el Rayo
+        if (_modoDiosActivo && !_partidaTerminada)
+          IconButton(
+            icon: const Icon(Icons.emoji_events, color: Colors.greenAccent),
+            tooltip: 'Forzar Victoria',
+            onPressed: () {
+              setState(() {
+                // Revela todo lo que no es mina para cumplir limpiamente la regla de ganar
+                for (var fila in _buscaminas.tablero) {
+                  for (var celda in fila) {
+                    if (!celda.esMina) celda.estaRevelada = true;
+                  }
+                }
+                // Corrección aquí: Cambiar 'Condition' por 'Condicion'
+                _verificarCondicionVictoria(); 
+              });
+            },
+          ),
+        ],
       ),
       body: SafeArea(
-        // Quitamos el scroll para que la pantalla sea fija y el tablero se vea forzado a estirarse
         child: Column(
           children: [
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
-            // --- PANEL SUPERIOR DE MARCADORES ---
+            // --- FILA 1: MARCADORES PRINCIPALES ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Marcador de Bombas Restantes
                   _crearDisplayMarcador(
                     icono: Icons.brightness_low_sharp,
                     colorIcono: Colors.redAccent,
-                    valor: _calcularMinasRestantes().toString(),
+                    valor: _calcularMinasRestantes().toString().padLeft(2, '0'),
                   ),
-
-                  // Botón rápido de reinicio en medio
                   IconButton(
-                    icon: const Icon(Icons.sentiment_satisfied, size: 36, color: Colors.amber),
+                    icon: Icon(
+                      _partidaTerminada ? Icons.sentiment_very_satisfied : Icons.sentiment_satisfied, 
+                      size: 38, 
+                      color: Colors.amber
+                    ),
                     onPressed: () {
                       setState(() {
                         _iniciarNuevaPartida();
                       });
                     },
                   ),
-
-                  // Marcador del Cronómetro
                   _crearDisplayMarcador(
                     icono: Icons.timer,
                     colorIcono: Colors.amber,
@@ -150,14 +254,39 @@ class _TableroScreenState extends State<TableroScreen> {
               ),
             ),
 
-            // --- EL TABLERO DE JUEGO (Expandido y Autoajustable) ---
+            const SizedBox(height: 10),
+
+            // --- FILA 2: CONTADOR DE SCORE ESTILO RETRO ---
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.grey[800]!, width: 2),
+                ),
+                child: Text(
+                  'SCORE: ${_score.toString().padLeft(6, '0')}', 
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.greenAccent, 
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Courier',
+                    letterSpacing: 2,
+                  ),
+                ),
+              ),
+            ),
+
+            // --- EL TABLERO DE JUEGO ---
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    // Tomamos el espacio real sobrante de la pantalla y elegimos el menor 
-                    // para asegurar que el tablero sea un cuadrado perfecto sin desbordar.
                     double sizeTablero = constraints.maxWidth < constraints.maxHeight
                         ? constraints.maxWidth
                         : constraints.maxHeight;
@@ -167,7 +296,7 @@ class _TableroScreenState extends State<TableroScreen> {
                         width: sizeTablero,
                         height: sizeTablero,
                         child: GridView.builder(
-                          physics: const NeverScrollableScrollPhysics(), // Evita scroll interno cruzado
+                          physics: const NeverScrollableScrollPhysics(),
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: _buscaminas.columnas,
                             crossAxisSpacing: 4.0,
@@ -188,19 +317,18 @@ class _TableroScreenState extends State<TableroScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
           ],
         ),
       ),
     );
   }
 
-  // --- WIDGET ESTILIZADO PARA LOS MARCADORES ---
   Widget _crearDisplayMarcador({required IconData icono, required Color colorIcono, required String valor}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black, // Fondo negro estilo pantalla digital
+        color: Colors.black,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: Colors.grey[800]!, width: 2),
       ),
@@ -211,10 +339,10 @@ class _TableroScreenState extends State<TableroScreen> {
           Text(
             valor,
             style: const TextStyle(
-              color: Colors.red, // Letras rojas estilo marcador digital antiguo
+              color: Colors.red,
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              fontFamily: 'Courier', // Fuente monoespaciada para toque retro
+              fontFamily: 'Courier',
             ),
           ),
         ],
@@ -225,13 +353,16 @@ class _TableroScreenState extends State<TableroScreen> {
   Widget _construirBotonCelda(Celda celda, int fila, int columna) {
     return InkWell(
       onTap: () {
-        if (celda.tieneBandera || celda.estaRevelada) return;
+        if (celda.tieneBandera || celda.estaRevelada || _partidaTerminada) return;
 
         setState(() {
           _revelarCeldaRecursivo(fila, columna);
+          _actualizarPuntaje(esBonoVictoria: false);
+          _verificarCondicionVictoria(); 
           
           if (celda.esMina) {
-            _timer?.cancel(); // se congela el temporizador 
+            _partidaTerminada = true;
+            _timer?.cancel(); 
 
             Navigator.of(context).push(
               MaterialPageRoute(
@@ -251,7 +382,7 @@ class _TableroScreenState extends State<TableroScreen> {
         });
       },
       onLongPress: () {
-        if (celda.estaRevelada) return;
+        if (celda.estaRevelada || _partidaTerminada) return;
         setState(() {
           celda.tieneBandera = !celda.tieneBandera;
         });
@@ -285,6 +416,16 @@ class _TableroScreenState extends State<TableroScreen> {
     }
     
     if (!celda.estaRevelada) {
+      // --- RAYOS X DEL MODO DIOS ---
+      if (_modoDiosActivo && celda.esMina) {
+        return Opacity(
+          opacity: 0.35, // Renderiza la bomba semitransparente bajo la niebla de guerra
+          child: Image.asset(
+            'assets/imagenes/revealed_tile_bomb.png',
+            fit: BoxFit.fill,
+          ),
+        );
+      }
       return const SizedBox();
     }
 
