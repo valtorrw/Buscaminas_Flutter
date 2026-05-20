@@ -2,93 +2,246 @@ import 'package:flutter/material.dart';
 import 'gameover_screen.dart';
 import '../logic.dart';
 import '../celda.dart';
+import 'dart:async';
 
 class TableroScreen extends StatefulWidget {
-  const TableroScreen({super.key});
+  final int filas;
+  final int columnas;
+  final int numMinas;
+
+  const TableroScreen({
+    super.key,
+    required this.filas,
+    required this.columnas,
+    required this.numMinas,
+  });
 
   @override
   State<TableroScreen> createState() => _TableroScreenState();
 }
 
 class _TableroScreenState extends State<TableroScreen> {
-  // Instanciamos la lógica para nivel Fácil (6x6 con 10 minas) como pide el PDF
   late BuscaminasLogic _buscaminas;
+  
+  // Variables para el control del tiempo
+  Timer? _timer;
+  int _segundosActivos = 0;
 
   @override
   void initState() {
-    super.initState() ;
-    _buscaminas = BuscaminasLogic(filas: 6, columnas: 6, numMinas: 10);
+    super.initState();
+    _iniciarNuevaPartida();
+  }
+
+  // Limpiamos el timer cuando el jugador salga de esta pantalla para evitar fugas de memoria
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  // Reinicia tanto la matriz de juego como el reloj
+  void _iniciarNuevaPartida() {
+    _buscaminas = BuscaminasLogic(
+      filas: widget.filas,
+      columnas: widget.columnas,
+      numMinas: widget.numMinas,
+    );
+    _segundosActivos = 0;
+    _timer?.cancel(); // Reseteamos cualquier timer viejo activo
+    _arrancarCronometro();
+  }
+
+  void _arrancarCronometro() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        _segundosActivos++;
+      });
+    });
+  }
+
+  // Cuenta cuántas banderas activas hay en el tablero para restar al marcador
+  int _calcularMinasRestantes() {
+    int banderasColocadas = 0;
+    for (var fila in _buscaminas.tablero) {
+      for (var celda in fila) {
+        if (celda.tieneBandera && !celda.estaRevelada) {
+          banderasColocadas++;
+        }
+      }
+    }
+    return widget.numMinas - banderasColocadas;
+  }
+
+  // Convierte los segundos a formato MM:SS
+  String _formatearTiempo(int segundosTotales) {
+    int minutos = segundosTotales ~/ 60;
+    int segundos = segundosTotales % 60;
+    String minStr = minutos.toString().padLeft(2, '0');
+    String segStr = segundos.toString().padLeft(2, '0');
+    return '$minStr:$segStr';
+  }
+
+  void _revelarCeldaRecursivo(int fila, int columna) {
+    if (fila < 0 || fila >= _buscaminas.filas || columna < 0 || columna >= _buscaminas.columnas) {
+      return;
+    }
+
+    Celda celda = _buscaminas.tablero[fila][columna];
+    if (celda.estaRevelada || celda.tieneBandera) return;
+
+    celda.estaRevelada = true;
+
+    if (!celda.esMina && celda.minasAlrededor == 0) {
+      for (int i = -1; i <= 1; i++) {
+        for (int j = -1; j <= 1; j++) {
+          if (i != 0 || j != 0) {
+            _revelarCeldaRecursivo(fila + i, columna + j);
+          }
+        }
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[900], // Fondo oscuro de ejemplo para resaltar el tablero
+      backgroundColor: Colors.grey[900],
       appBar: AppBar(
         title: const Text('Buscaminas'),
-        //centerTitle: true,
         backgroundColor: Colors.black,
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              // Calculo para que el tablero quede cuadrado
-              double sizeTablero = constraints.maxWidth < constraints.maxHeight
-                  ? constraints.maxWidth
-                  : constraints.maxHeight;
+      body: SafeArea(
+        // Quitamos el scroll para que la pantalla sea fija y el tablero se vea forzado a estirarse
+        child: Column(
+          children: [
+            const SizedBox(height: 16),
 
-              return SizedBox(
-                width: sizeTablero,
-                height: sizeTablero,
-                child: GridView.builder(
-                  // Desactivamos el scroll interno para que actúe como un tablero fijo
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: _buscaminas.columnas, // Número de columnas
-                    crossAxisSpacing: 4.0, // Espacio entre celdas
-                    mainAxisSpacing: 4.0,
+            // --- PANEL SUPERIOR DE MARCADORES ---
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Marcador de Bombas Restantes
+                  _crearDisplayMarcador(
+                    icono: Icons.brightness_low_sharp,
+                    colorIcono: Colors.redAccent,
+                    valor: _calcularMinasRestantes().toString(),
                   ),
-                  itemCount: _buscaminas.filas * _buscaminas.columnas,
-                  itemBuilder: (context, index) {
-                    // Convertimos el índice lineal (0 a 35) en coordenadas (fila, columna)
-                    int fila = index ~/ _buscaminas.columnas;
-                    int columna = index % _buscaminas.columnas;
-                    Celda celda = _buscaminas.tablero[fila][columna];
 
-                    return _construirBotonCelda(celda);
+                  // Botón rápido de reinicio en medio
+                  IconButton(
+                    icon: const Icon(Icons.sentiment_satisfied, size: 36, color: Colors.amber),
+                    onPressed: () {
+                      setState(() {
+                        _iniciarNuevaPartida();
+                      });
+                    },
+                  ),
+
+                  // Marcador del Cronómetro
+                  _crearDisplayMarcador(
+                    icono: Icons.timer,
+                    colorIcono: Colors.amber,
+                    valor: _formatearTiempo(_segundosActivos),
+                  ),
+                ],
+              ),
+            ),
+
+            // --- EL TABLERO DE JUEGO (Expandido y Autoajustable) ---
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Tomamos el espacio real sobrante de la pantalla y elegimos el menor 
+                    // para asegurar que el tablero sea un cuadrado perfecto sin desbordar.
+                    double sizeTablero = constraints.maxWidth < constraints.maxHeight
+                        ? constraints.maxWidth
+                        : constraints.maxHeight;
+
+                    return Center(
+                      child: SizedBox(
+                        width: sizeTablero,
+                        height: sizeTablero,
+                        child: GridView.builder(
+                          physics: const NeverScrollableScrollPhysics(), // Evita scroll interno cruzado
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: _buscaminas.columnas,
+                            crossAxisSpacing: 4.0,
+                            mainAxisSpacing: 4.0,
+                          ),
+                          itemCount: _buscaminas.filas * _buscaminas.columnas,
+                          itemBuilder: (context, index) {
+                            int fila = index ~/ _buscaminas.columnas;
+                            int columna = index % _buscaminas.columnas;
+                            Celda celda = _buscaminas.tablero[fila][columna];
+
+                            return _construirBotonCelda(celda, fila, columna);
+                          },
+                        ),
+                      ),
+                    );
                   },
                 ),
-              );
-            },
-          ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
         ),
       ),
     );
   }
 
-// 1. Modificamos el diseño exterior de la casilla para usar tus imágenes de fondo
-  Widget _construirBotonCelda(Celda celda) {
+  // --- WIDGET ESTILIZADO PARA LOS MARCADORES ---
+  Widget _crearDisplayMarcador({required IconData icono, required Color colorIcono, required String valor}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black, // Fondo negro estilo pantalla digital
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.grey[800]!, width: 2),
+      ),
+      child: Row(
+        children: [
+          Icon(icono, color: colorIcono, size: 22),
+          const SizedBox(width: 8),
+          Text(
+            valor,
+            style: const TextStyle(
+              color: Colors.red, // Letras rojas estilo marcador digital antiguo
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Courier', // Fuente monoespaciada para toque retro
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _construirBotonCelda(Celda celda, int fila, int columna) {
     return InkWell(
       onTap: () {
+        if (celda.tieneBandera || celda.estaRevelada) return;
+
         setState(() {
-          celda.estaRevelada = true;
+          _revelarCeldaRecursivo(fila, columna);
+          
           if (celda.esMina) {
-            //print("Explotaste.");
-            
+            _timer?.cancel(); // se congela el temporizador 
+
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => GameOverScreen(
                   onReiniciar: () {
-                    // Volvemos a instanciar la lógica para generar un tablero nuevo y limpio
                     setState(() {
-                      _buscaminas = BuscaminasLogic(filas: 6, columnas: 6, numMinas: 10);
+                      _iniciarNuevaPartida();
                     });
                   },
                   onIrAlMenu: () {
-                    // Borramos el historial de navegación y volvemos a la ruta inicial.
-                    // Si tienes una ruta específica para el menú, cambia '/' por '/menu' o tu ruta.
                     Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
                   },
                 ),
@@ -98,16 +251,16 @@ class _TableroScreenState extends State<TableroScreen> {
         });
       },
       onLongPress: () {
+        if (celda.estaRevelada) return;
         setState(() {
           celda.tieneBandera = !celda.tieneBandera;
         });
       },
       child: Ink(
         decoration: BoxDecoration(
-          color: celda.estaRevelada ? Colors.grey[300] : Colors.grey[700], // Color de respaldo por seguridad
+          color: celda.estaRevelada ? Colors.grey[300] : Colors.grey[700],
           borderRadius: BorderRadius.circular(4.0),
           image: DecorationImage(
-            // Cambiado a BoxFit.fill para que el fondo ocupe obligatoriamente todo el cuadro
             image: AssetImage(
               celda.estaRevelada 
                   ? 'assets/imagenes/masked_tile.png' 
@@ -123,38 +276,32 @@ class _TableroScreenState extends State<TableroScreen> {
     );
   }
 
-  // 2. Modificamos el interior para pintar tus imágenes encima del fondo
   Widget _contenidoCelda(Celda celda) {
-    // REGLA 1: Si tiene bandera (y no está revelada), muestra tu imagen de bandera
     if (celda.tieneBandera && !celda.estaRevelada) {
       return Image.asset(
         'assets/imagenes/masked_tile_flag.png',
-        fit: BoxFit.fill, // Ocupa todo el contenedor
+        fit: BoxFit.fill,
       );
     }
     
-    // REGLA 2: Si está oculta y no tiene bandera, no se dibuja nada adentro
     if (!celda.estaRevelada) {
       return const SizedBox();
     }
 
-    // REGLA 3: Si está revelada y es una mina, muestra tu imagen de bomba
     if (celda.esMina) {
       return Image.asset(
         'assets/imagenes/revealed_tile_bomb.png',
-        fit: BoxFit.fill, // Ocupa todo el contenedor
+        fit: BoxFit.fill,
       );
     }
 
-    // REGLA 4: Si tiene minas alrededor (del 1 al 8), cargamos dinámicamente tu imagen del número
     if (celda.minasAlrededor > 0) {
       return Image.asset(
         'assets/imagenes/revealed_tile_${celda.minasAlrededor}.png', 
-        fit: BoxFit.fill, // Ocupa todo el contenedor
+        fit: BoxFit.fill,
       );
     }
 
-    // Si es un "0", queda vacío mostrando solo el fondo de cuadro_revelado
     return const SizedBox();
   }
 }

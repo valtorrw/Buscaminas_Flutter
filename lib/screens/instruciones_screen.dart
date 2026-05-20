@@ -28,6 +28,7 @@ class InstruccionesScreen extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
+            //Aqui es donde se coloca el texto
             const SizedBox(height: 20),
             _construirRegla(
               Icons.format_list_numbered,

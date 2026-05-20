@@ -53,7 +53,7 @@ class MenuScreen extends StatelessWidget {
               _crearBoton('Créditos', Icons.info_outline, Colors.blueGrey, () {
                 // Como aún no tenemos pantalla de créditos, mostramos un aviso rápido
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Desarrollado con Flutter 💙')),
+                  const SnackBar(content: Text('Desarrollado por Valeria T. y Alejandro H.')),
                 );
               }),
               

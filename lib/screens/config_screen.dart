@@ -39,12 +39,11 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           SwitchListTile(
             title: const Text('Modo Oscuro', style: TextStyle(color: Colors.white)),
             subtitle: const Text('Cambiar entre tema oscuro y claro', style: TextStyle(color: Colors.grey)),
-            activeColor: Colors.amber,
+            activeThumbColor: Colors.amber,
             value: _modoOscuro,
             onChanged: (bool value) {
               setState(() {
                 _modoOscuro = value;
-                // TODO: Conectar esto con la lógica real de Theming (Provider, Bloc, etc.)
               });
             },
             secondary: Icon(_modoOscuro ? Icons.dark_mode : Icons.light_mode, color: Colors.white),
@@ -62,7 +61,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           SwitchListTile(
             title: const Text('Efectos de Sonido', style: TextStyle(color: Colors.white)),
             subtitle: const Text('Explosiones y clics', style: TextStyle(color: Colors.grey)),
-            activeColor: Colors.amber,
+            activeThumbColor: Colors.amber,
             value: _efectosSonido,
             onChanged: (bool value) {
               setState(() {

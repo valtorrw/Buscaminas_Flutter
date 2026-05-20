@@ -1,5 +1,5 @@
 import 'package:busca_mina/screens/config_screen.dart';
-import 'package:busca_mina/screens/tablero_screen.dart';
+//import 'package:busca_mina/screens/tablero_screen.dart';
 import 'package:busca_mina/screens/menu_screen.dart';
 import 'package:busca_mina/screens/dificultad_screen.dart';
 import 'package:busca_mina/screens/instruciones_screen.dart';
@@ -19,13 +19,13 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false, 
       theme: ThemeData.dark(),
       
-      // Definir cuál es la primera pantalla que se abre (El menú)
+      // Primera palabra que se abre
       initialRoute: '/',
       
-      // 2. Aquí creamos el "mapa" de navegación de tu juego
+      //Mapa de navegacion
       routes: {
         '/': (context) => const MenuScreen(),
-        '/juego': (context) => const TableroScreen(),
+        '/juego': (context) => const DificultadesScreen(),
         '/config': (context) => const ConfiguracionScreen(),    
         '/instrucciones': (context) => const InstruccionesScreen(),
       },
