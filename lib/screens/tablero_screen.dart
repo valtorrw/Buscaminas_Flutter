@@ -1,8 +1,10 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'gameover_screen.dart';
 import 'victoria_screen.dart';
 import '../logic.dart';
 import '../celda.dart';
+import 'dart:convert';
 import 'dart:async';
 
 
@@ -10,12 +12,14 @@ class TableroScreen extends StatefulWidget {
   final int filas;
   final int columnas;
   final int numMinas;
+  final String nombreUsuario;
 
   const TableroScreen({
     super.key,
     required this.filas,
     required this.columnas,
     required this.numMinas,
+    required this.nombreUsuario,
   });
 
   @override
@@ -92,6 +96,49 @@ class _TableroScreenState extends State<TableroScreen> {
     _score = puntajeCalculado < 0 ? 0 : puntajeCalculado;
   }
 
+  // --- PERSISTENCIA LOCAL (SHARED PREFERENCES) ---
+  
+  // 1. Ahora leemos la memoria buscando el JSON en 'top_scores_v2'
+  Future<List<Map<String, dynamic>>> _obtenerTopScores() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? scoresJson = prefs.getString('top_scores_v2'); 
+    
+    if (scoresJson == null) return [];
+    
+    // Decodificamos el JSON a una lista de mapas
+    List<dynamic> decodificado = jsonDecode(scoresJson);
+    return decodificado.map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
+  // 2. Modificamos el guardado para recibir también el nombre
+  Future<bool> _guardarPuntajeSiEsTop(int nuevoScore, String nombre) async {
+    final prefs = await SharedPreferences.getInstance();
+    List<Map<String, dynamic>> actuales = await _obtenerTopScores();
+
+    // Añadimos el nuevo registro como un Mapa (Diccionario)
+    actuales.add({
+      'nombre': nombre,
+      'score': nuevoScore,
+    });
+    
+    // Ordenamos. 
+    // Nota: Si en tu Buscaminas el score es TIEMPO, el menor es mejor: a['score'].compareTo(b['score'])
+    // Como tu código anterior usaba b.compareTo(a) (mayor es mejor), lo mantengo así:
+    actuales.sort((a, b) => b['score'].compareTo(a['score']));
+
+    // Mantenemos únicamente el Top 3 histórico
+    if (actuales.length > 3) {
+      actuales = actuales.sublist(0, 3);
+    }
+
+    // Convertimos la lista de mapas a un String JSON y lo guardamos
+    final String jsonParaGuardar = jsonEncode(actuales);
+    await prefs.setString('top_scores_v2', jsonParaGuardar); // Usamos setString, no setStringList
+
+    // Comprobamos si el score recién guardado quedó entre los 3 primeros
+    return actuales.any((registro) => registro['score'] == nuevoScore && registro['nombre'] == nombre);
+  }
+
   // --- COMPROBACIÓN DE VICTORIA ---
   void _verificarCondicionVictoria() {
     int celdasReveladas = 0;
@@ -114,15 +161,17 @@ class _TableroScreenState extends State<TableroScreen> {
     }
   }
 
-  void _mostrarPantallaVictoria() {
-    bool comprobarSiEsTop3 = _score > 1500; 
+  // Cambiamos a función asíncrona para esperar la respuesta de SharedPreferences
+  void _mostrarPantallaVictoria() async {
+    bool comprobarSiEsTop3 = await _guardarPuntajeSiEsTop(_score, widget.nombreUsuario);
+    if (!mounted) return; // Control por si destruyen el Widget durante el "await"
 
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => VictoryScreen( 
           score: _score,
           tiempo: _formatearTiempo(_segundosActivos),
-          esTop3: comprobarSiEsTop3,
+          esTop3: comprobarSiEsTop3, // Valor dinámico e histórico real
           onReiniciar: () {
             setState(() {
               _iniciarNuevaPartida();
@@ -179,12 +228,10 @@ class _TableroScreenState extends State<TableroScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[900],
-      // --- APPBAR CON CONTROLES DE MODO DIOS INTEGRADOS ---
       appBar: AppBar(
         title: const Text('Buscaminas Retro'),
         backgroundColor: Colors.black,
         actions: [
-          // Botón Interruptor Modo Dios (Rayo)
           IconButton(
             icon: Icon(
               _modoDiosActivo ? Icons.bolt : Icons.bolt_outlined,
@@ -197,20 +244,17 @@ class _TableroScreenState extends State<TableroScreen> {
               });
             },
           ),
-          // Botón de Auto-Victoria (Copa) - Solo visible si activas el Rayo
         if (_modoDiosActivo && !_partidaTerminada)
           IconButton(
             icon: const Icon(Icons.emoji_events, color: Colors.greenAccent),
             tooltip: 'Forzar Victoria',
             onPressed: () {
               setState(() {
-                // Revela todo lo que no es mina para cumplir limpiamente la regla de ganar
                 for (var fila in _buscaminas.tablero) {
                   for (var celda in fila) {
                     if (!celda.esMina) celda.estaRevelada = true;
                   }
                 }
-                // Corrección aquí: Cambiar 'Condition' por 'Condicion'
                 _verificarCondicionVictoria(); 
               });
             },
@@ -222,7 +266,6 @@ class _TableroScreenState extends State<TableroScreen> {
           children: [
             const SizedBox(height: 12),
 
-            // --- FILA 1: MARCADORES PRINCIPALES ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Row(
@@ -256,7 +299,6 @@ class _TableroScreenState extends State<TableroScreen> {
 
             const SizedBox(height: 10),
 
-            // --- FILA 2: CONTADOR DE SCORE ESTILO RETRO ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Container(
@@ -281,7 +323,6 @@ class _TableroScreenState extends State<TableroScreen> {
               ),
             ),
 
-            // --- EL TABLERO DE JUEGO ---
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -416,10 +457,9 @@ class _TableroScreenState extends State<TableroScreen> {
     }
     
     if (!celda.estaRevelada) {
-      // --- RAYOS X DEL MODO DIOS ---
       if (_modoDiosActivo && celda.esMina) {
         return Opacity(
-          opacity: 0.35, // Renderiza la bomba semitransparente bajo la niebla de guerra
+          opacity: 0.35, 
           child: Image.asset(
             'assets/imagenes/revealed_tile_bomb.png',
             fit: BoxFit.fill,

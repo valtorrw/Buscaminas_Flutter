@@ -21,7 +21,7 @@ class MyApp extends StatelessWidget {
       
       // Primera palabra que se abre
       initialRoute: '/',
-      
+      navigatorObservers: [routeObserver],
       //Mapa de navegacion
       routes: {
         '/': (context) => const MenuScreen(),
