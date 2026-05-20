@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'gameover_screen.dart';
 import '../logic.dart';
 import '../celda.dart';
 
@@ -74,8 +75,25 @@ class _TableroScreenState extends State<TableroScreen> {
         setState(() {
           celda.estaRevelada = true;
           if (celda.esMina) {
-            print("¡BOOM! Explotaste.");
-            // Aquí luego revelarás todas las minas del tablero
+            //print("Explotaste.");
+            
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => GameOverScreen(
+                  onReiniciar: () {
+                    // Volvemos a instanciar la lógica para generar un tablero nuevo y limpio
+                    setState(() {
+                      _buscaminas = BuscaminasLogic(filas: 6, columnas: 6, numMinas: 10);
+                    });
+                  },
+                  onIrAlMenu: () {
+                    // Borramos el historial de navegación y volvemos a la ruta inicial.
+                    // Si tienes una ruta específica para el menú, cambia '/' por '/menu' o tu ruta.
+                    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                  },
+                ),
+              ),
+            );
           }
         });
       },
